@@ -28,7 +28,7 @@ Grab the installer for your computer from the [latest release](https://github.co
 
 ### First launch
 
-The first time you open the app it downloads the YouTube engine (yt-dlp) into the app's own folder. On Windows that is about 23 MB. On Mac it is about 60 MB because it also grabs ffmpeg. This happens once. After that the engine checks for updates by itself every couple of days, since YouTube changes often.
+The first time you open the app it downloads the YouTube engine (yt-dlp) into the app's own folder. On Windows that is about 24 MB and takes a few seconds. On Mac it is about 95 MB because it also grabs ffmpeg. This happens once. After that the engine checks for updates by itself every couple of days, since YouTube changes often.
 
 ## How to use it
 
@@ -43,7 +43,7 @@ Your recent files show up in the download log with **Play** and **Show** buttons
 
 ## Size
 
-The Windows installer is about 13 MB and the app takes about 45 MB once the engine is downloaded. It uses the WebView2 runtime that already comes with Windows 10 and 11, and a tiny custom ffmpeg build that only includes what MP3 and MP4 need.
+The Windows installer is about 4 MB (the .msi is about 7 MB) and the Mac .dmg is about 5 MB. On Windows the app takes about 40 MB once the engine is downloaded. It uses the WebView2 runtime that already comes with Windows 10 and 11, and a tiny custom ffmpeg build that only includes what MP3 and MP4 need.
 
 ## Troubleshooting
 
