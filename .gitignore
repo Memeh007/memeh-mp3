@@ -9,3 +9,7 @@ bin/yt-dlp
 .env
 *.log
 shots/
+SHARE_PASSWORD.txt
+SHARE_URL.txt
+tunnel.log
+bin/cloudflared

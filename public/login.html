@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memeh MP3</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="crt" aria-hidden="true"></div>
+    <div class="lab-grid" aria-hidden="true"></div>
+
+    <div class="app">
+      <header class="top">
+        <canvas id="helix" width="360" height="360" aria-hidden="true"></canvas>
+        <div class="title-block">
+          <p class="kicker">MEMEH007 // MP3 / MP4</p>
+          <h1>MEMEH<br />MP3</h1>
+          <p class="lede">
+            Enter the share password to use the converter.
+            Stick to videos you have the rights to use or that are licensed for reuse.
+          </p>
+        </div>
+        <div class="mascot-col">
+          <canvas id="planaria" width="280" height="180" aria-label="Pixel mascot"></canvas>
+          <p class="mascot-line" id="mascotLine">ready</p>
+        </div>
+      </header>
+
+      <main class="panel login-panel" aria-label="Sign in">
+        <form id="loginForm" class="form" method="post" action="/login" autocomplete="off">
+          <label class="field">
+            <span>Share password</span>
+            <input id="password" name="password" type="password" required autofocus />
+          </label>
+          <p class="alert" id="alert" hidden role="alert"></p>
+          <div class="actions">
+            <button type="submit" class="btn primary" id="loginBtn">Enter</button>
+          </div>
+        </form>
+      </main>
+
+      <footer>
+        <p>PASSWORD PROTECTED  //  SEARCH HIDDEN</p>
+      </footer>
+    </div>
+
+    <script src="/visual.js"></script>
+    <script>
+      const form = document.getElementById('loginForm');
+      const alertEl = document.getElementById('alert');
+      const btn = document.getElementById('loginBtn');
+      const params = new URLSearchParams(location.search);
+      if (params.get('error') === '1') {
+        alertEl.hidden = false;
+        alertEl.textContent = 'Wrong password.';
+      } else if (params.get('error') === 'rate') {
+        alertEl.hidden = false;
+        alertEl.textContent = 'Too many tries. Wait a few minutes and try again.';
+      }
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        btn.disabled = true;
+        alertEl.hidden = true;
+        try {
+          const res = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ password: document.getElementById('password').value }),
+          });
+          if (res.status === 429) throw new Error('Too many tries. Wait a few minutes and try again.');
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Wrong password.');
+          location.replace('/');
+        } catch (err) {
+          alertEl.hidden = false;
+          alertEl.textContent = err.message || 'Wrong password.';
+          btn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

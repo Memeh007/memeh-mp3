@@ -221,13 +221,53 @@ async function ensureFfmpeg() {
   throw lastError || new Error('Could not install ffmpeg');
 }
 
+const CLOUDFLARED_URLS = {
+  win32: 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe',
+  linux: 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64',
+  darwin: 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz',
+};
+
+async function ensureCloudflared() {
+  const existing = findLocal('cloudflared');
+  if (existing) {
+    log(`cloudflared already available: ${existing}`);
+    return existing;
+  }
+  if (wingetAvailable()) {
+    if (tryWinget('Cloudflare.cloudflared')) {
+      const found = findLocal('cloudflared');
+      if (found) return found;
+    }
+  }
+  const url = CLOUDFLARED_URLS[process.platform];
+  if (!url || process.platform === 'darwin') {
+    throw new Error('cloudflared was not found. Install it with your package manager and retry.');
+  }
+  const destName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
+  const dest = path.join(BIN, destName);
+  log(`Downloading cloudflared from GitHub releases`);
+  await followDownload(url, dest);
+  try {
+    fs.chmodSync(dest, 0o755);
+  } catch {
+    // chmod is only needed on Unix
+  }
+  log(`Saved ${dest}`);
+  return dest;
+}
+
 async function main() {
+  const wantShare = process.argv.includes('--cloudflared');
   log('Installing tools for Memeh MP3, user scope only.');
   const yt = await ensureYtDlp();
   const ff = await ensureFfmpeg();
-  log('All set.');
   log(`yt-dlp: ${yt}`);
   log(`ffmpeg: ${ff}`);
+  if (wantShare) {
+    const cf = await ensureCloudflared();
+    log(`cloudflared: ${cf}`);
+  }
+  log('All set.');
 }
 
 main().catch((err) => {

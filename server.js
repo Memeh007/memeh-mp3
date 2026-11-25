@@ -8,6 +8,8 @@ const crypto = require('crypto');
 const os = require('os');
 
 const ROOT = __dirname;
+loadEnvFile(path.join(ROOT, '.env'));
+
 const PORT = Number(process.env.PORT) || 5050;
 const HOST = '127.0.0.1';
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -15,10 +17,22 @@ const DOWNLOADS_DIR = path.join(ROOT, 'downloads');
 const DATA_DIR = path.join(ROOT, 'data');
 const HISTORY_PATH = path.join(DATA_DIR, 'history.json');
 const BIN_DIR = path.join(ROOT, 'bin');
-const QUALITIES = new Set([128, 192, 320]);
+const AUDIO_QUALITIES = new Set([128, 192, 320]);
+const VIDEO_RESOLUTIONS = new Set(['360', '720', '1080', 'best']);
 const MAX_HISTORY = 40;
 const MAX_PLAYLIST_ITEMS = 25;
+const MAX_CONCURRENT_JOBS = 2;
+const MAX_JOBS_PER_SESSION = 1;
 const JOB_TTL_MS = 2 * 60 * 60 * 1000;
+const FILE_TTL_MS = 2 * 60 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const COOKIE_NAME = 'memeh_session';
+const PASSWORD = String(process.env.MEMEH_PASSWORD || '');
+const AUTH_REQUIRED = Boolean(PASSWORD);
+const SESSION_SECRET = crypto
+  .createHash('sha256')
+  .update(`memeh-mp3|${PASSWORD || 'local-open'}|${os.hostname()}`)
+  .digest();
 const ALLOWED_HOSTS = new Set([
   'youtube.com',
   'www.youtube.com',
@@ -27,6 +41,7 @@ const ALLOWED_HOSTS = new Set([
   'youtu.be',
   'www.youtu.be',
 ]);
+const PUBLIC_ASSETS = new Set(['/styles.css', '/favicon.svg', '/visual.js', '/login.html']);
 
 fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -34,6 +49,30 @@ fs.mkdirSync(BIN_DIR, { recursive: true });
 
 const jobs = new Map();
 const clients = new Map();
+const rateBuckets = new Map();
+
+function loadEnvFile(file) {
+  try {
+    const raw = fs.readFileSync(file, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq < 1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
+      if (process.env[key] == null || process.env[key] === '') process.env[key] = val;
+    }
+  } catch {
+    // .env is optional
+  }
+}
 
 function sendJson(res, status, body) {
   res.status(status).json(body);
@@ -56,7 +95,19 @@ function saveHistory(items) {
 function addHistory(entry) {
   const items = loadHistory().filter((item) => item.id !== entry.id);
   items.unshift(entry);
-  saveHistory(items.slice(0, MAX_HISTORY));
+  saveHistory(items.slice(0, 400));
+}
+
+function historyForSession(sessionId) {
+  return loadHistory()
+    .filter((item) => item.sessionId === sessionId)
+    .slice(0, MAX_HISTORY)
+    .map((item) => publicFile(item));
+}
+
+function publicFile(item) {
+  const { sessionId, relPath, ...rest } = item;
+  return rest;
 }
 
 function which(cmd) {
@@ -138,12 +189,12 @@ function formatDuration(seconds) {
 }
 
 function safeBaseName(title, fallback) {
-  const raw = String(title || fallback || 'audio')
+  const raw = String(title || fallback || 'media')
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
-  return raw || fallback || 'audio';
+  return raw || fallback || 'media';
 }
 
 function runYtDlp(args, opts = {}) {
@@ -229,7 +280,7 @@ function summarizeInfo(info, playlist) {
       title: info.title || info.playlist_title || 'Playlist',
       thumbnail: pickThumbnail(info) || pickThumbnail(first),
       duration: null,
-      durationText: entries.length ? `${Math.min(entries.length, MAX_PLAYLIST_ITEMS)} tracks` : null,
+      durationText: entries.length ? `${Math.min(entries.length, MAX_PLAYLIST_ITEMS)} items` : null,
       uploader: info.uploader || info.channel || first.uploader || null,
       itemCount: info.playlist_count || entries.length || null,
       webpageUrl: info.webpage_url || info.original_url || null,
@@ -280,6 +331,24 @@ function attachClient(jobId, res) {
   });
 }
 
+function videoFormat(resolution) {
+  if (resolution === 'best') {
+    return 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+  }
+  const height = Number(resolution);
+  return `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
+}
+
+function qualityLabel(jobOrItem) {
+  const format = jobOrItem.format || 'mp3';
+  if (format === 'mp4') {
+    const res = String(jobOrItem.resolution || 'best');
+    return res === 'best' ? 'Best MP4' : `${res}p MP4`;
+  }
+  const quality = jobOrItem.quality;
+  return quality ? `${quality} kbps` : 'MP3';
+}
+
 function parseProgress(chunk, job) {
   const text = String(chunk);
   job.log = ((job.log || '') + text).slice(-8000);
@@ -291,7 +360,7 @@ function parseProgress(chunk, job) {
       job.itemTotal = Number(itemMatch[2]);
       emit(job.id, 'status', {
         phase: 'download',
-        message: `Track ${job.itemIndex} of ${job.itemTotal}`,
+        message: `Item ${job.itemIndex} of ${job.itemTotal}`,
         itemIndex: job.itemIndex,
         itemTotal: job.itemTotal,
       });
@@ -308,11 +377,16 @@ function parseProgress(chunk, job) {
         speed: speed && speed !== 'Unknown' ? speed : null,
         eta: eta && eta !== 'Unknown' ? eta : null,
         phase: 'download',
+        format: job.format,
       });
     }
     if (/\[ExtractAudio\]|Destination:.*\.mp3/i.test(line)) {
       job.phase = 'convert';
       emit(job.id, 'status', { phase: 'convert', message: 'Converting to MP3' });
+    }
+    if (/\[Merger\]|\[RemuxVideo\]|\[RecodeVideo\]|Merging formats/i.test(line)) {
+      job.phase = 'convert';
+      emit(job.id, 'status', { phase: 'convert', message: 'Merging MP4' });
     }
     if (/\[EmbedThumbnail\]|\[Metadata\]|Adding metadata|Embedding/i.test(line)) {
       job.phase = 'tag';
@@ -321,37 +395,62 @@ function parseProgress(chunk, job) {
   }
 }
 
-async function startConversion(job) {
-  const outDir = path.join(DOWNLOADS_DIR, job.id);
-  fs.mkdirSync(outDir, { recursive: true });
-  const template = path.join(outDir, '%(title).180B [%(id)s].%(ext)s');
+function buildArgs(job, template) {
   const args = [
-    '-x',
-    '--audio-format', 'mp3',
-    '--audio-quality', `${job.quality}K`,
-    '--embed-metadata',
-    '--embed-thumbnail',
-    '--convert-thumbnails', 'jpg',
     '--no-overwrites',
     '--newline',
     '--progress',
     '--no-warnings',
     '--restrict-filenames',
-    '-o', template,
+    '--embed-metadata',
+    '-o',
+    template,
   ];
+  if (job.format === 'mp4') {
+    args.push(
+      '-f',
+      videoFormat(job.resolution),
+      '--merge-output-format',
+      'mp4',
+      '--remux-video',
+      'mp4',
+      '--embed-thumbnail',
+      '--convert-thumbnails',
+      'jpg'
+    );
+  } else {
+    args.push(
+      '-x',
+      '--audio-format',
+      'mp3',
+      '--audio-quality',
+      `${job.quality}K`,
+      '--embed-thumbnail',
+      '--convert-thumbnails',
+      'jpg'
+    );
+  }
   if (job.playlist) {
     args.push('--yes-playlist', '--playlist-end', String(MAX_PLAYLIST_ITEMS));
   } else {
     args.push('--no-playlist');
   }
   args.push('--', job.url);
+  return args;
+}
+
+async function startConversion(job) {
+  const outDir = path.join(DOWNLOADS_DIR, job.id);
+  fs.mkdirSync(outDir, { recursive: true });
+  const template = path.join(outDir, '%(title).180B [%(id)s].%(ext)s');
+  const args = buildArgs(job, template);
 
   emit(job.id, 'status', { phase: 'fetch', message: 'Starting download' });
   job.phase = 'download';
 
   try {
     await runYtDlp(args, {
-      timeoutMs: job.playlist ? 30 * 60 * 1000 : 15 * 60 * 1000,
+      timeoutMs: job.playlist ? 45 * 60 * 1000 : 20 * 60 * 1000,
       onSpawn: (child) => {
         job.child = child;
       },
@@ -361,9 +460,13 @@ async function startConversion(job) {
 
     if (job.cancelled) return;
 
-    const files = collectMp3s(outDir);
+    const files = collectOutputs(outDir, job.format);
     if (!files.length) {
-      throw new Error('Conversion finished, but no MP3 file was created');
+      throw new Error(
+        job.format === 'mp4'
+          ? 'Download finished, but no MP4 file was created'
+          : 'Conversion finished, but no MP3 file was created'
+      );
     }
 
     const items = files.map((file) => {
@@ -372,10 +475,14 @@ async function startConversion(job) {
       const entry = {
         id,
         jobId: job.id,
+        sessionId: job.sessionId,
         title: prettyTitleFromFile(publicName),
         filename: publicName,
         relPath: path.relative(DOWNLOADS_DIR, file).replace(/\\/g, '/'),
-        quality: job.quality,
+        format: job.format,
+        quality: job.format === 'mp3' ? job.quality : null,
+        resolution: job.format === 'mp4' ? job.resolution : null,
+        label: qualityLabel(job),
         url: job.url,
         thumbnail: job.preview && job.preview.thumbnail ? job.preview.thumbnail : null,
         durationText: job.preview && job.preview.type === 'video' ? job.preview.durationText : null,
@@ -383,7 +490,7 @@ async function startConversion(job) {
         bytes: safeSize(file),
       };
       addHistory(entry);
-      return entry;
+      return publicFile(entry);
     });
 
     job.status = 'done';
@@ -403,21 +510,22 @@ async function startConversion(job) {
   }
 }
 
-function collectMp3s(dir) {
+function collectOutputs(dir, format) {
+  const ext = format === 'mp4' ? /\.mp4$/i : /\.mp3$/i;
   if (!fs.existsSync(dir)) return [];
   const out = [];
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name);
     const stat = fs.statSync(full);
-    if (stat.isDirectory()) out.push(...collectMp3s(full));
-    else if (/\.mp3$/i.test(name)) out.push(full);
+    if (stat.isDirectory()) out.push(...collectOutputs(full, format));
+    else if (ext.test(name) && !/\.part$/i.test(name)) out.push(full);
   }
   return out.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 }
 
 function prettyTitleFromFile(name) {
   return name
-    .replace(/\.mp3$/i, '')
+    .replace(/\.(mp3|mp4)$/i, '')
     .replace(/_/g, ' ')
     .replace(/\s*\[([a-zA-Z0-9_-]{6,})\]\s*$/, '')
     .trim();
@@ -438,14 +546,255 @@ function resolveDownloadFile(relPath) {
   const root = path.resolve(DOWNLOADS_DIR);
   if (full !== root && !full.startsWith(root + path.sep)) return null;
   if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return null;
-  if (!/\.mp3$/i.test(full)) return null;
+  if (!/\.(mp3|mp4)$/i.test(full)) return null;
   return full;
+}
+
+function removePath(target) {
+  try {
+    if (!fs.existsSync(target)) return;
+    const stat = fs.statSync(target);
+    if (stat.isDirectory()) fs.rmSync(target, { recursive: true, force: true });
+    else fs.unlinkSync(target);
+  } catch {
+    // cleanup is best effort
+  }
+}
+
+function cleanupExpiredFiles() {
+  const now = Date.now();
+  const items = loadHistory();
+  const kept = [];
+  for (const item of items) {
+    const created = Date.parse(item.createdAt) || 0;
+    if (created && now - created > FILE_TTL_MS) {
+      if (item.relPath) {
+        const file = resolveDownloadFile(item.relPath);
+        if (file) {
+          const dir = path.dirname(file);
+          removePath(file);
+          try {
+            if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) removePath(dir);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } else {
+      kept.push(item);
+    }
+  }
+  if (kept.length !== items.length) saveHistory(kept);
+
+  try {
+    for (const name of fs.readdirSync(DOWNLOADS_DIR)) {
+      const full = path.join(DOWNLOADS_DIR, name);
+      const stat = fs.statSync(full);
+      if (!stat.isDirectory()) continue;
+      if (now - stat.mtimeMs > FILE_TTL_MS) {
+        const stillReferenced = kept.some(
+          (item) => item.relPath && item.relPath.split('/')[0] === name
+        );
+        if (!stillReferenced) removePath(full);
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function clientIp(req) {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf.trim()) return cf.trim();
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd.trim()) return fwd.split(',')[0].trim();
+  return String(req.socket.remoteAddress || '').replace('::ffff:', '');
+}
+
+function rateLimit(key, max, windowMs) {
+  const now = Date.now();
+  let bucket = rateBuckets.get(key);
+  if (!bucket || now - bucket.start >= windowMs) {
+    bucket = { start: now, count: 0 };
+    rateBuckets.set(key, bucket);
+  }
+  bucket.count += 1;
+  return bucket.count <= max;
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const out = {};
+  if (!header) return out;
+  for (const part of String(header).split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 1) continue;
+    const key = part.slice(0, eq).trim();
+    const val = part.slice(eq + 1).trim();
+    try {
+      out[key] = decodeURIComponent(val);
+    } catch {
+      out[key] = val;
+    }
+  }
+  return out;
+}
+
+function signSession(sid, exp) {
+  const payload = `${sid}.${exp}`;
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function readSession(token) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [sid, exp, sig] = parts;
+  if (!isSafeId(sid) || !/^\d+$/.test(exp)) return null;
+  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(`${sid}.${exp}`).digest();
+  let given;
+  try {
+    given = Buffer.from(sig, 'base64url');
+  } catch {
+    return null;
+  }
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
+  if (Date.now() >= Number(exp) * 1000) return null;
+  return sid;
+}
+
+function wantsSecureCookie(req) {
+  return req.secure || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+}
+
+function setSessionCookie(req, res, sid) {
+  const exp = Math.floor((Date.now() + SESSION_TTL_MS) / 1000);
+  const token = signSession(sid, exp);
+  const parts = [
+    `${COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+  ];
+  if (wantsSecureCookie(req)) parts.push('Secure');
+  res.append('Set-Cookie', parts.join('; '));
+}
+
+function clearSessionCookie(req, res) {
+  const parts = [`${COOKIE_NAME}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
+  if (wantsSecureCookie(req)) parts.push('Secure');
+  res.append('Set-Cookie', parts.join('; '));
+}
+
+function newSessionId() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function safeEqualString(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  if (left.length !== right.length) {
+    crypto.timingSafeEqual(left, left);
+    return false;
+  }
+  return crypto.timingSafeEqual(left, right);
+}
+
+function parseFormat(body) {
+  const format = String((body && body.format) || 'mp3').toLowerCase();
+  if (format !== 'mp3' && format !== 'mp4') return { error: 'Choose MP3 or MP4.' };
+  if (format === 'mp4') {
+    const resolution = String((body && (body.resolution || body.quality)) || '720');
+    if (!VIDEO_RESOLUTIONS.has(resolution)) {
+      return { error: 'Choose 360p, 720p, 1080p, or best.' };
+    }
+    return { format, resolution, quality: null };
+  }
+  const quality = Number(body && body.quality);
+  if (!AUDIO_QUALITIES.has(quality)) {
+    return { error: 'Choose 128, 192, or 320 kbps.' };
+  }
+  return { format, quality, resolution: null };
 }
 
 const app = express();
 app.disable('x-powered-by');
+app.set('trust proxy', 'loopback');
+app.use((req, res, next) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
 app.use(express.json({ limit: '16kb' }));
-app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
+app.use(express.urlencoded({ extended: false, limit: '8kb' }));
+
+const staticPublic = express.static(PUBLIC_DIR, { extensions: ['html'] });
+
+app.get('/robots.txt', (_req, res) => {
+  res.type('text/plain').send('User-agent: *\nDisallow: /\n');
+});
+
+app.get('/login', (req, res) => {
+  if (!AUTH_REQUIRED) return res.redirect('/');
+  if (readSession(parseCookies(req)[COOKIE_NAME])) return res.redirect('/');
+  res.sendFile(path.join(PUBLIC_DIR, 'login.html'));
+});
+
+app.post('/login', (req, res) => {
+  const wantsJson = String(req.headers.accept || '').includes('application/json') ||
+    String(req.headers['content-type'] || '').includes('application/json');
+  if (!AUTH_REQUIRED) {
+    const sid = newSessionId();
+    setSessionCookie(req, res, sid);
+    return wantsJson ? res.json({ ok: true }) : res.redirect('/');
+  }
+  const ip = clientIp(req);
+  if (!rateLimit(`login:${ip}`, 8, 15 * 60 * 1000)) {
+    if (wantsJson) return sendJson(res, 429, { error: 'Too many tries. Wait a few minutes and try again.' });
+    return res.redirect('/login?error=rate');
+  }
+  const password = req.body && req.body.password;
+  if (!safeEqualString(password, PASSWORD)) {
+    if (wantsJson) return sendJson(res, 401, { error: 'Wrong password.' });
+    return res.redirect('/login?error=1');
+  }
+  const sid = newSessionId();
+  setSessionCookie(req, res, sid);
+  return wantsJson ? res.json({ ok: true }) : res.redirect('/');
+});
+
+app.post('/logout', (req, res) => {
+  clearSessionCookie(req, res);
+  const wantsJson = String(req.headers.accept || '').includes('application/json');
+  return wantsJson ? res.json({ ok: true }) : res.redirect('/login');
+});
+
+app.use((req, res, next) => {
+  if (PUBLIC_ASSETS.has(req.path)) return staticPublic(req, res, next);
+  next();
+});
+
+app.use((req, res, next) => {
+  const sid = readSession(parseCookies(req)[COOKIE_NAME]);
+  if (sid) {
+    req.sessionId = sid;
+    return next();
+  }
+  if (!AUTH_REQUIRED) {
+    const created = newSessionId();
+    setSessionCookie(req, res, created);
+    req.sessionId = created;
+    return next();
+  }
+  if (req.path.startsWith('/api/')) {
+    return sendJson(res, 401, { error: 'Sign in with the share password first.' });
+  }
+  if (req.method === 'GET' || req.method === 'HEAD') return res.redirect('/login');
+  return sendJson(res, 401, { error: 'Sign in with the share password first.' });
+});
+
+app.use(staticPublic);
 
 app.get('/api/health', (_req, res) => {
   const tools = toolStatus();
@@ -453,6 +802,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     host: HOST,
     port: PORT,
+    auth: AUTH_REQUIRED,
     tools,
   });
 });
@@ -461,27 +811,21 @@ app.get('/api/tools', (_req, res) => {
   res.json(toolStatus());
 });
 
-app.get('/api/history', (_req, res) => {
-  res.json({ items: loadHistory() });
+app.get('/api/history', (req, res) => {
+  res.json({ items: historyForSession(req.sessionId) });
 });
 
 app.delete('/api/history/:id', (req, res) => {
   const { id } = req.params;
   if (!isSafeId(id)) return sendJson(res, 400, { error: 'Invalid item id' });
   const items = loadHistory();
-  const found = items.find((item) => item.id === id);
+  const found = items.find((item) => item.id === id && item.sessionId === req.sessionId);
   if (!found) return sendJson(res, 404, { error: 'Item not found' });
   const next = items.filter((item) => item.id !== id);
   saveHistory(next);
   if (found.relPath) {
     const file = resolveDownloadFile(found.relPath);
-    if (file) {
-      try {
-        fs.unlinkSync(file);
-      } catch {
-        // keep history updated even if the file is already gone
-      }
-    }
+    if (file) removePath(file);
   }
   res.json({ ok: true });
 });
@@ -489,16 +833,20 @@ app.delete('/api/history/:id', (req, res) => {
 app.get('/api/file/:id', (req, res) => {
   const { id } = req.params;
   if (!isSafeId(id)) return sendJson(res, 400, { error: 'Invalid file id' });
-  const item = loadHistory().find((entry) => entry.id === id);
+  const item = loadHistory().find((entry) => entry.id === id && entry.sessionId === req.sessionId);
   if (!item || !item.relPath) return sendJson(res, 404, { error: 'File not found' });
   const file = resolveDownloadFile(item.relPath);
-  if (!file) return sendJson(res, 404, { error: 'The MP3 is no longer on disk' });
+  if (!file) return sendJson(res, 404, { error: 'The file is no longer on disk' });
   res.download(file, item.filename || path.basename(file), (err) => {
     if (err && !res.headersSent) sendJson(res, 500, { error: 'Could not send the file' });
   });
 });
 
 app.post('/api/preview', async (req, res) => {
+  const ip = clientIp(req);
+  if (!rateLimit(`preview:${ip}`, 20, 10 * 60 * 1000)) {
+    return sendJson(res, 429, { error: 'Too many previews. Wait a bit, then try again.' });
+  }
   const url = parseYouTubeUrl(req.body && req.body.url);
   const playlist = Boolean(req.body && req.body.playlist);
   if (!url) {
@@ -529,14 +877,18 @@ app.post('/api/preview', async (req, res) => {
 });
 
 app.post('/api/convert', (req, res) => {
+  const ip = clientIp(req);
+  if (!rateLimit(`convert:${ip}`, 10, 20 * 60 * 1000)) {
+    return sendJson(res, 429, { error: 'Too many conversions. Wait a bit, then try again.' });
+  }
   const url = parseYouTubeUrl(req.body && req.body.url);
   const playlist = Boolean(req.body && req.body.playlist);
-  const quality = Number(req.body && req.body.quality);
+  const parsed = parseFormat(req.body);
   if (!url) {
     return sendJson(res, 400, { error: 'That link does not look like a YouTube URL.' });
   }
-  if (!QUALITIES.has(quality)) {
-    return sendJson(res, 400, { error: 'Choose 128, 192, or 320 kbps.' });
+  if (parsed.error) {
+    return sendJson(res, 400, { error: parsed.error });
   }
   const tools = toolStatus();
   if (!tools.ready) {
@@ -545,15 +897,21 @@ app.post('/api/convert', (req, res) => {
       tools,
     });
   }
-  const active = [...jobs.values()].filter((j) => j.status === 'running').length;
-  if (active >= 2) {
+  const active = [...jobs.values()].filter((j) => j.status === 'running');
+  if (active.length >= MAX_CONCURRENT_JOBS) {
     return sendJson(res, 429, { error: 'Two conversions are already running. Wait a moment, then try again.' });
+  }
+  if (active.filter((j) => j.sessionId === req.sessionId).length >= MAX_JOBS_PER_SESSION) {
+    return sendJson(res, 429, { error: 'You already have a conversion running. Wait for it to finish.' });
   }
   const id = crypto.randomBytes(8).toString('hex');
   const job = {
     id,
+    sessionId: req.sessionId,
     url,
-    quality,
+    format: parsed.format,
+    quality: parsed.quality,
+    resolution: parsed.resolution,
     playlist,
     preview: (req.body && req.body.preview) || null,
     status: 'running',
@@ -567,12 +925,13 @@ app.post('/api/convert', (req, res) => {
   };
   jobs.set(id, job);
   setImmediate(() => startConversion(job));
-  res.json({ jobId: id });
+  res.json({ jobId: id, format: job.format });
 });
 
 app.get('/api/events/:id', (req, res) => {
   const { id } = req.params;
-  if (!isSafeId(id) || !jobs.has(id)) {
+  const job = isSafeId(id) ? jobs.get(id) : null;
+  if (!job || job.sessionId !== req.sessionId) {
     res.status(404).end();
     return;
   }
@@ -581,6 +940,7 @@ app.get('/api/events/:id', (req, res) => {
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
+    'X-Robots-Tag': 'noindex, nofollow',
   });
   res.write(':\n\n');
   attachClient(id, res);
@@ -588,10 +948,10 @@ app.get('/api/events/:id', (req, res) => {
 
 app.post('/api/cancel/:id', (req, res) => {
   const { id } = req.params;
-  if (!isSafeId(id) || !jobs.has(id)) {
+  const job = isSafeId(id) ? jobs.get(id) : null;
+  if (!job || job.sessionId !== req.sessionId) {
     return sendJson(res, 404, { error: 'Job not found' });
   }
-  const job = jobs.get(id);
   job.cancelled = true;
   job.status = 'cancelled';
   if (job.child) {
@@ -613,9 +973,13 @@ app.use('/api', (_req, res) => {
   sendJson(res, 404, { error: 'Unknown API route' });
 });
 
+cleanupExpiredFiles();
+setInterval(cleanupExpiredFiles, 10 * 60 * 1000).unref();
+
 const server = app.listen(PORT, HOST, () => {
   const tools = toolStatus();
   console.log(`Memeh MP3 listening on http://${HOST}:${PORT}`);
+  console.log(`Password protection: ${AUTH_REQUIRED ? 'on' : 'off'}`);
   console.log(`yt-dlp: ${tools.ytDlp.ok ? tools.ytDlp.path : 'MISSING'}`);
   console.log(`ffmpeg: ${tools.ffmpeg.ok ? tools.ffmpeg.path : 'MISSING'}`);
   if (!tools.ready) {

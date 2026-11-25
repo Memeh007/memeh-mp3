@@ -37,9 +37,41 @@ function fx() {
   };
 }
 
+function selectedFormat() {
+  const chosen = form.querySelector('input[name="format"]:checked');
+  return chosen ? chosen.value : 'mp3';
+}
+
 function selectedQuality() {
   const chosen = form.querySelector('input[name="quality"]:checked');
   return Number(chosen ? chosen.value : 192);
+}
+
+function selectedResolution() {
+  const chosen = form.querySelector('input[name="resolution"]:checked');
+  return chosen ? chosen.value : '720';
+}
+
+function fileLabel(file) {
+  if (file.label) return file.label;
+  if (file.format === 'mp4') {
+    const res = String(file.resolution || 'best');
+    return res === 'best' ? 'Best MP4' : `${res}p MP4`;
+  }
+  return file.quality ? `${file.quality} kbps` : 'MP3';
+}
+
+function saveLabel(file) {
+  return file.format === 'mp4' ? 'Save MP4' : 'Save MP3';
+}
+
+function syncFormatUi() {
+  const format = selectedFormat();
+  const audio = document.getElementById('audioQuality');
+  const video = document.getElementById('videoQuality');
+  if (audio) audio.hidden = format !== 'mp3';
+  if (video) video.hidden = format !== 'mp4';
+  if (convertBtn) convertBtn.textContent = format === 'mp4' ? 'Extract MP4' : 'Extract MP3';
 }
 
 function showAlert(message) {
@@ -72,6 +104,10 @@ function formatWhen(iso) {
 }
 
 async function readError(res) {
+  if (res.status === 401) {
+    location.replace('/login');
+    return 'Sign in with the share password first.';
+  }
   try {
     const data = await res.json();
     return data.error || res.statusText;
@@ -83,6 +119,10 @@ async function readError(res) {
 async function refreshTools() {
   try {
     const res = await fetch('/api/health');
+    if (res.status === 401) {
+      location.replace('/login');
+      return;
+    }
     const data = await res.json();
     if (!data.tools || data.tools.ready) {
       toolsEl.hidden = true;
@@ -118,6 +158,10 @@ function renderPreview(preview) {
 
 async function loadHistory() {
   const res = await fetch('/api/history');
+  if (res.status === 401) {
+    location.replace('/login');
+    return;
+  }
   const data = await res.json();
   const items = data.items || [];
   historyList.innerHTML = '';
@@ -131,7 +175,7 @@ async function loadHistory() {
     const h3 = document.createElement('h3');
     h3.textContent = item.title || item.filename;
     const p = document.createElement('p');
-    p.textContent = [item.quality ? `${item.quality} kbps` : '', formatBytes(item.bytes), formatWhen(item.createdAt)]
+    p.textContent = [fileLabel(item), formatBytes(item.bytes), formatWhen(item.createdAt)]
       .filter(Boolean)
       .join('  ·  ');
     body.append(h3, p);
@@ -140,7 +184,7 @@ async function loadHistory() {
     const save = document.createElement('a');
     save.className = 'btn ghost tiny';
     save.href = `/api/file/${item.id}`;
-    save.textContent = 'Save MP3';
+    save.textContent = saveLabel(item);
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'btn quiet tiny';
@@ -196,12 +240,12 @@ function showFiles(files) {
     name.textContent = file.title || file.filename;
     const bytes = document.createElement('p');
     bytes.className = 'bytes';
-    bytes.textContent = 'Ready to save  ·  ' + [file.quality ? `${file.quality} kbps` : '', formatBytes(file.bytes)].filter(Boolean).join('  ·  ');
+    bytes.textContent = 'Ready to save  ·  ' + [fileLabel(file), formatBytes(file.bytes)].filter(Boolean).join('  ·  ');
     left.append(name, bytes);
     const link = document.createElement('a');
     link.className = 'btn primary tiny';
     link.href = `/api/file/${file.id}`;
-    link.textContent = 'Save MP3';
+    link.textContent = saveLabel(file);
     row.append(left, link);
     resultEl.append(row);
   }
@@ -253,7 +297,9 @@ convertBtn.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: urlInput.value.trim(),
+        format: selectedFormat(),
         quality: selectedQuality(),
+        resolution: selectedResolution(),
         playlist: playlistInput.checked,
         preview: currentPreview,
       }),
@@ -270,7 +316,7 @@ convertBtn.addEventListener('click', async () => {
     eventSource.addEventListener('progress', (ev) => {
       const payload = JSON.parse(ev.data);
       const extra = [payload.speed, payload.eta ? `ETA ${payload.eta}` : ''].filter(Boolean).join('  ·  ');
-      setProgress(payload.percent, 'Extracting audio', extra);
+      setProgress(payload.percent, payload.format === 'mp4' || selectedFormat() === 'mp4' ? 'Downloading video' : 'Extracting audio', extra);
       fx().blip('tick');
     });
     eventSource.addEventListener('done', (ev) => {
@@ -326,6 +372,11 @@ playlistInput.addEventListener('change', () => {
   currentPreview = null;
 });
 
+for (const input of form.querySelectorAll('input[name="format"]')) {
+  input.addEventListener('change', syncFormatUi);
+}
+
+syncFormatUi();
 refreshTools();
 loadHistory();
 urlInput.focus();

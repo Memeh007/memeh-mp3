@@ -163,7 +163,8 @@ h1 {
   color: var(--lime);
 }
 
-input[type="url"] {
+input[type="url"],
+input[type="password"] {
   width: 100%;
   border: 3px solid var(--line);
   background: #04060a;
@@ -175,9 +176,15 @@ input[type="url"] {
   outline: none;
 }
 
-input[type="url"]:focus {
+input[type="url"]:focus,
+input[type="password"]:focus {
   border-color: var(--cyan);
   box-shadow: 0 0 0 3px rgba(60, 255, 208, 0.18);
+}
+
+.login-panel {
+  max-width: 560px;
+  margin: 0 auto;
 }
 
 .row {
