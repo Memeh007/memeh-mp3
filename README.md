@@ -53,7 +53,7 @@ Your recent files show up in the download log with **Play** and **Show** buttons
 
 ## Size
 
-The Windows installer is about 15 MB and the Mac .dmg is about 5 MB. On Windows the app takes about 40 MB once installed. It uses the WebView2 runtime that already comes with Windows 10 and 11, and a tiny custom ffmpeg build that only includes what MP3 and MP4 need.
+The Windows installer is about 28 MB (the .msi is about 30 MB) and the Mac .dmg is about 5 MB. Most of that is the official yt-dlp engine, which now ships inside the installer. On Windows the app takes about 40 MB once installed. It uses the WebView2 runtime that already comes with Windows 10 and 11, and a tiny custom ffmpeg build that only includes what MP3 and MP4 need.
 
 ## Troubleshooting
 
