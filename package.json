@@ -1,0 +1,17 @@
+{
+  "name": "memeh-mp3",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Memeh MP3, a personal localhost YouTube to MP3 converter",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "install-tools": "node install-tools.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

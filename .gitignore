@@ -1,0 +1,11 @@
+node_modules/
+downloads/*
+!downloads/.gitkeep
+data/history.json
+bin/*.exe
+bin/ffmpeg
+bin/ffprobe
+bin/yt-dlp
+.env
+*.log
+shots/
