@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Memeh MP3",
+  "version": "2.0.0",
+  "identifier": "com.memeh007.memehmp3",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Memeh MP3",
+        "width": 1120,
+        "height": 860,
+        "minWidth": 720,
+        "minHeight": 560,
+        "center": true,
+        "backgroundColor": "#07080d"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi", "dmg", "app"],
+    "publisher": "Memeh007",
+    "copyright": "Memeh007",
+    "category": "Utility",
+    "shortDescription": "Paste a YouTube link, get an MP3 or MP4.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}

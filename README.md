@@ -1,79 +1,71 @@
 # Memeh MP3
 
-A localhost app that turns a YouTube link into an MP3 or MP4 on your computer. You can keep it to yourself, or share a private web link with friends. The link is password protected and hidden from search engines. It only works while this computer is on.
+Paste a YouTube link, get an MP3 or MP4. Memeh MP3 is a small desktop app for Windows and Mac. It runs on your own computer and your own internet, so there is no server, no account, and no password.
 
 Only download content you have the rights to, or that is licensed for reuse.
 
 ![Memeh MP3](docs/screenshot.png)
 
-## Requirements
+## Download
 
-- Node.js 18 or newer
+Grab the installer for your computer from the [latest release](https://github.com/Memeh007/memeh-mp3/releases/latest):
 
-## Windows
+| Computer | File |
+| --- | --- |
+| Windows 10 or 11 | `Memeh.MP3_2.0.0_x64-setup.exe` (recommended, no admin needed) or `Memeh.MP3_2.0.0_x64_en-US.msi` |
+| Mac (Apple Silicon or Intel) | `Memeh.MP3_2.0.0_universal.dmg` |
 
-1. Download the ZIP from this repo and unzip it.
-2. Double-click `start.bat`.
-3. Your browser should open http://127.0.0.1:5050
+### Windows install
 
-The first run may take a minute while it installs packages and, if needed, yt-dlp and ffmpeg into the app's bin folder. Admin rights are not required. Leave the window open while you use the app.
+1. Double-click the setup file.
+2. If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**. This shows up because the app is not code signed. It is safe to continue.
+3. When it finishes you get a Memeh MP3 shortcut on your Desktop and in the Start menu.
 
-## macOS and Linux
+### Mac install
 
-```
-npm install
-node install-tools.js
-npm start
-```
+1. Open the `.dmg` and drag **Memeh MP3** into **Applications**.
+2. The first time, right-click (or Control-click) the app and choose **Open**, then click **Open** again. If macOS still blocks it, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**. This shows up because the app is not notarized by Apple.
 
-Then open http://127.0.0.1:5050
+### First launch
 
-If you prefer system packages on macOS, you can install the tools with Homebrew instead of `install-tools.js`:
-
-```
-brew install yt-dlp ffmpeg
-npm install
-npm start
-```
+The first time you open the app it downloads the YouTube engine (yt-dlp) into the app's own folder. On Windows that is about 23 MB. On Mac it is about 60 MB because it also grabs ffmpeg. This happens once. After that the engine checks for updates by itself every couple of days, since YouTube changes often.
 
 ## How to use it
 
-1. Paste a YouTube URL.
-2. Choose MP3 or MP4.
-3. For MP3, pick 128, 192, or 320 kbps. For MP4, pick 360p, 720p, 1080p, or best.
-4. Click Scan link to see the title, artwork, and length.
-5. Click Extract MP3 or Extract MP4. Watch the progress bar fill, then save the file.
-6. Optional: turn on Include playlist to convert up to 25 items from a playlist.
+1. Paste a YouTube link. It scans the link right away (or click **Scan link**).
+2. Choose **MP3** or **MP4**.
+3. For MP3, pick 128, 192, or 320 kbps. For MP4, pick 360p, 720p, 1080p, or Best.
+4. Click **Extract MP3** or **Extract MP4** and watch the progress bar.
+5. Files save to `Downloads\Memeh MP3` (Windows) or `Downloads/Memeh MP3` (Mac). Click **Open folder** to jump there, or **Change** to pick a different folder.
+6. Optional: turn on **Include playlist** to grab up to 25 items from a playlist.
 
-Recent files appear in the download log. They stay available for a couple of hours, then they are removed.
+Your recent files show up in the download log with **Play** and **Show** buttons. Removing a row from the log does not delete the file.
 
-Use SOUND ON in the corner if you want sound effects. The setting is remembered.
+## Size
 
-## Share a private web link
+The Windows installer is about 13 MB and the app takes about 45 MB once the engine is downloaded. It uses the WebView2 runtime that already comes with Windows 10 and 11, and a tiny custom ffmpeg build that only includes what MP3 and MP4 need.
 
-Friends can use the app in a browser with nothing to install. The app still runs on your computer, and a Cloudflare quick tunnel gives them a temporary public URL. There is no cloud server to pay for.
+## Troubleshooting
 
-Friends should open this GitHub page, which sends them to the live app when it is online:
+- **A video fails that used to work:** close and reopen the app. It updates the engine every couple of days. To force an update, delete the `tools` folder in `%LOCALAPPDATA%\com.memeh007.memehmp3` (Windows) or `~/Library/Application Support/com.memeh007.memehmp3` (Mac) and reopen the app.
+- **Private, age restricted, or region locked videos** show an error instead of a file.
+- **Uninstall:** Windows Settings > Apps > Memeh MP3 > Uninstall. On Mac, drag the app to the Trash.
 
-https://memeh007.github.io/memeh-mp3/
+## Build it yourself
 
-On Windows, double-click `share.bat`. It starts the local server and the tunnel, then updates that GitHub page with the new tunnel URL. Leave the minimized server and tunnel windows open while friends are using it. The tunnel URL changes each time you restart, but the GitHub link stays the same.
+The desktop app lives in `desktop/`. It is a [Tauri 2](https://tauri.app) app: a small Rust backend that drives yt-dlp and ffmpeg, plus the Memeh MP3 web UI.
 
-The share password is saved in `SHARE_PASSWORD.txt` in the app folder (and in a local `.env` file, which is not committed). Send friends the GitHub link and the password in a private message. Do not post them in a public place.
+```
+cd desktop
+npm install
+npx tauri dev      # run it
+npx tauri build    # make an installer
+```
 
-The login page, the app, and the GitHub page send `noindex` headers and a `robots.txt` that blocks crawlers, so the links should not show up in search results. Anyone who has the link still needs the password.
+Pushing a tag like `desktop-v2.0.0` runs `.github/workflows/desktop-release.yml`, which builds the Windows and Mac installers and attaches them to a GitHub release.
 
-On macOS or Linux, start the app with `npm start`, set `MEMEH_PASSWORD` in a local `.env` file, then run a Cloudflare quick tunnel pointed at http://127.0.0.1:5050. After you have the tunnel URL, run `node publish-link.js` in this repo to update the GitHub page.
+The bundled Windows ffmpeg in `desktop/src-tauri/resources/win` was built with `desktop/scripts/build-ffmpeg-min.sh` (FFmpeg 7.1.1 with LAME, LGPL). QuickJS-NG (`qjs.exe`, MIT) is bundled so yt-dlp can solve YouTube's JavaScript checks.
 
-This only works while your computer is on and the server and tunnel are running. If the app is not running, the GitHub page will say Memeh MP3 is offline right now.
+## Old web version
 
-## Notes
-
-The server binds only to 127.0.0.1 on port 5050. The tunnel connects to that local address, so the app is not opened on your network by itself.
-
-If port 5050 is already in use, close the other Memeh MP3 window and try again.
-
-If a video is private, age restricted, or region locked, the app will show an error instead of a file.
-
-Press Ctrl+C in the server window to stop a local session. To stop a share session, close the Memeh MP3 server and tunnel windows.
-
+The original browser version (Node.js server, optional private share link) is still in this repo: `server.js`, `start.bat`, and `share.bat`. Run `start.bat` on Windows, or `npm install` then `npm start` elsewhere, and open http://127.0.0.1:5050. The desktop app is the easier way to use Memeh MP3 now.

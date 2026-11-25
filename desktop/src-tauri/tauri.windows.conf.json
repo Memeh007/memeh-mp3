@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/win/ffmpeg.exe": "tools/ffmpeg.exe",
+      "resources/win/ffprobe.exe": "tools/ffprobe.exe",
+      "resources/win/qjs.exe": "tools/qjs.exe"
+    }
+  }
+}

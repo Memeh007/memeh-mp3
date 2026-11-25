@@ -1,0 +1,13 @@
+{
+  "name": "memeh-mp3-desktop",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Memeh MP3 desktop app",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
