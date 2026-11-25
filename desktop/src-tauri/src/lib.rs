@@ -242,7 +242,9 @@ fn needed_tools() -> Vec<ToolFile> {
             url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe".into(),
             zip_member: None,
         });
-        // ffmpeg, ffprobe and qjs ship inside the installer on Windows.
+        // yt-dlp, ffmpeg, ffprobe and qjs ship inside the installer on Windows,
+        // so nothing is downloaded and run on first launch. This entry is only
+        // a fallback if the bundled copy is missing.
     } else if cfg!(target_os = "macos") {
         let arch = if cfg!(target_arch = "aarch64") { "arm64" } else { "amd64" };
         let qarch = if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" };
@@ -432,18 +434,29 @@ fn run_setup(app: &AppHandle, state: &AppState) -> Result<(), String> {
 fn maybe_update_engine(app: AppHandle) {
     std::thread::spawn(move || {
         let mut s = load_settings(&app);
-        let due = s
-            .last_update
-            .map(|t| now_secs().saturating_sub(t) > UPDATE_EVERY_SECS)
-            .unwrap_or(true);
-        if !due {
+        let Some(last) = s.last_update else {
+            // Fresh install: the engine that shipped with the app is new enough.
+            s.last_update = Some(now_secs());
+            save_settings(&app, &s);
+            return;
+        };
+        if now_secs().saturating_sub(last) <= UPDATE_EVERY_SECS {
             return;
         }
         let state = app.state::<AppState>();
         if state.busy.load(Ordering::SeqCst) {
             return;
         }
-        if let Some(yt) = find_tool(&app, "yt-dlp") {
+        // Update a private copy so installs in read only folders still update.
+        let local = tools_dir(&app).join(exe("yt-dlp"));
+        if !local.is_file() {
+            if let Some(bundled) = find_tool(&app, "yt-dlp") {
+                if fs::copy(&bundled, &local).is_err() {
+                    return;
+                }
+            }
+        }
+        if let Some(yt) = Some(local).filter(|p| p.is_file()) {
             let ok = hidden(Command::new(&yt).arg("-U"))
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

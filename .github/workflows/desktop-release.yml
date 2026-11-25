@@ -43,6 +43,16 @@ jobs:
         working-directory: desktop
         run: npm install
 
+      - name: Bundle official yt-dlp.exe (checksum verified)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          cd desktop/src-tauri/resources/win
+          curl -fsSL -o yt-dlp.exe https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+          curl -fsSL -o SUMS https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS
+          grep ' yt-dlp.exe$' SUMS | sha256sum -c -
+          rm SUMS
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,7 @@
 {
   "bundle": {
     "resources": {
+      "resources/win/yt-dlp.exe": "tools/yt-dlp.exe",
       "resources/win/ffmpeg.exe": "tools/ffmpeg.exe",
       "resources/win/ffprobe.exe": "tools/ffprobe.exe",
       "resources/win/qjs.exe": "tools/qjs.exe"

@@ -12,14 +12,24 @@ Grab the installer for your computer from the [latest release](https://github.co
 
 | Computer | File |
 | --- | --- |
-| Windows 10 or 11 | `Memeh.MP3_2.0.0_x64-setup.exe` (recommended, no admin needed) or `Memeh.MP3_2.0.0_x64_en-US.msi` |
-| Mac (Apple Silicon or Intel) | `Memeh.MP3_2.0.0_universal.dmg` |
+| Windows 10 or 11 | `Memeh.MP3_2.0.1_x64-setup.exe` (recommended, no admin needed) or `Memeh.MP3_2.0.1_x64_en-US.msi` |
+| Mac (Apple Silicon or Intel) | `Memeh.MP3_2.0.1_universal.dmg` |
 
 ### Windows install
 
 1. Double-click the setup file.
 2. If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**. This shows up because the app is not code signed. It is safe to continue.
 3. When it finishes you get a Memeh MP3 shortcut on your Desktop and in the Start menu.
+
+### If Windows Defender says it found a virus
+
+Some PCs show `Trojan:Win32/Bearfoos.A!ml` and quarantine the app. The `!ml` means Defender's AI made a guess, not that it found real malware. It does this to new apps that are not code signed and that run helper programs in the background, which is how Memeh MP3 runs yt-dlp and ffmpeg. The app is built by GitHub Actions from the public code in this repo, and the helper programs are the official releases.
+
+To get the app back:
+
+1. Open **Windows Security** > **Virus & threat protection** > **Protection history**.
+2. Open each Memeh MP3 (Bearfoos) entry and choose **Actions** > **Allow on device** (or **Restore**).
+3. If the app is still missing, run the installer again.
 
 ### Mac install
 
@@ -28,7 +38,7 @@ Grab the installer for your computer from the [latest release](https://github.co
 
 ### First launch
 
-The first time you open the app it downloads the YouTube engine (yt-dlp) into the app's own folder. On Windows that is about 24 MB and takes a few seconds. On Mac it is about 95 MB because it also grabs ffmpeg. This happens once. After that the engine checks for updates by itself every couple of days, since YouTube changes often.
+On Windows everything comes inside the installer, so the app works right away. On Mac the first launch downloads the YouTube engine (yt-dlp) and ffmpeg into the app's own folder, about 95 MB, once. After that the engine checks for updates by itself every couple of days, since YouTube changes often.
 
 ## How to use it
 
@@ -43,11 +53,11 @@ Your recent files show up in the download log with **Play** and **Show** buttons
 
 ## Size
 
-The Windows installer is about 4 MB (the .msi is about 7 MB) and the Mac .dmg is about 5 MB. On Windows the app takes about 40 MB once the engine is downloaded. It uses the WebView2 runtime that already comes with Windows 10 and 11, and a tiny custom ffmpeg build that only includes what MP3 and MP4 need.
+The Windows installer is about 15 MB and the Mac .dmg is about 5 MB. On Windows the app takes about 40 MB once installed. It uses the WebView2 runtime that already comes with Windows 10 and 11, and a tiny custom ffmpeg build that only includes what MP3 and MP4 need.
 
 ## Troubleshooting
 
-- **A video fails that used to work:** close and reopen the app. It updates the engine every couple of days. To force an update, delete the `tools` folder in `%LOCALAPPDATA%\com.memeh007.memehmp3` (Windows) or `~/Library/Application Support/com.memeh007.memehmp3` (Mac) and reopen the app.
+- **A video fails that used to work:** close and reopen the app. It updates the engine every couple of days. To force an update, delete the `tools` folder in `%LOCALAPPDATA%\com.memeh007.memehmp3` (Windows, it falls back to the copy that came with the installer) or `~/Library/Application Support/com.memeh007.memehmp3` (Mac) and reopen the app.
 - **Private, age restricted, or region locked videos** show an error instead of a file.
 - **Uninstall:** Windows Settings > Apps > Memeh MP3 > Uninstall. On Mac, drag the app to the Trash.
 
@@ -62,9 +72,9 @@ npx tauri dev      # run it
 npx tauri build    # make an installer
 ```
 
-Pushing a tag like `desktop-v2.0.0` runs `.github/workflows/desktop-release.yml`, which builds the Windows and Mac installers and attaches them to a GitHub release.
+Pushing a tag like `desktop-v2.0.1` runs `.github/workflows/desktop-release.yml`, which builds the Windows and Mac installers and attaches them to a GitHub release.
 
-The bundled Windows ffmpeg in `desktop/src-tauri/resources/win` was built with `desktop/scripts/build-ffmpeg-min.sh` (FFmpeg 7.1.1 with LAME, LGPL). QuickJS-NG (`qjs.exe`, MIT) is bundled so yt-dlp can solve YouTube's JavaScript checks.
+The bundled Windows ffmpeg in `desktop/src-tauri/resources/win` was built with `desktop/scripts/build-ffmpeg-min.sh` (FFmpeg 7.1.1 with LAME, LGPL). The official `yt-dlp.exe` is downloaded and checked against yt-dlp's published SHA256 checksums during the build. QuickJS-NG (`qjs.exe`, MIT) is bundled so yt-dlp can solve YouTube's JavaScript checks.
 
 ## Old web version
 
