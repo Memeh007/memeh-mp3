@@ -53,15 +53,19 @@ Use SOUND ON in the corner if you want sound effects. The setting is remembered.
 
 Friends can use the app in a browser with nothing to install. The app still runs on your computer, and a Cloudflare quick tunnel gives them a temporary public URL. There is no cloud server to pay for.
 
-On Windows, double-click `share.bat`. It starts the local server and the tunnel, then prints a `trycloudflare.com` URL. The URL changes each time you restart. Leave the minimized server and tunnel windows open while friends are using it.
+Friends should open this GitHub page, which sends them to the live app when it is online:
 
-The share password is saved in `SHARE_PASSWORD.txt` in the app folder (and in a local `.env` file, which is not committed). Send friends the URL and the password in a private message. Do not post them in a public place.
+https://memeh007.github.io/memeh-mp3/
 
-The login page and the app send `noindex` headers and a `robots.txt` that blocks crawlers, so the link should not show up in search results. Anyone who has the URL still needs the password.
+On Windows, double-click `share.bat`. It starts the local server and the tunnel, then updates that GitHub page with the new tunnel URL. Leave the minimized server and tunnel windows open while friends are using it. The tunnel URL changes each time you restart, but the GitHub link stays the same.
 
-On macOS or Linux, start the app with `npm start`, set `MEMEH_PASSWORD` in a local `.env` file, then run a Cloudflare quick tunnel pointed at http://127.0.0.1:5050. The quick tunnel URL changes each time you restart.
+The share password is saved in `SHARE_PASSWORD.txt` in the app folder (and in a local `.env` file, which is not committed). Send friends the GitHub link and the password in a private message. Do not post them in a public place.
 
-This only works while your computer is on and the server and tunnel are running.
+The login page, the app, and the GitHub page send `noindex` headers and a `robots.txt` that blocks crawlers, so the links should not show up in search results. Anyone who has the link still needs the password.
+
+On macOS or Linux, start the app with `npm start`, set `MEMEH_PASSWORD` in a local `.env` file, then run a Cloudflare quick tunnel pointed at http://127.0.0.1:5050. After you have the tunnel URL, run `node publish-link.js` in this repo to update the GitHub page.
+
+This only works while your computer is on and the server and tunnel are running. If the app is not running, the GitHub page will say Memeh MP3 is offline right now.
 
 ## Notes
 

@@ -735,6 +735,13 @@ app.get('/robots.txt', (_req, res) => {
   res.type('text/plain').send('User-agent: *\nDisallow: /\n');
 });
 
+app.get('/api/up', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD');
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true });
+});
+
 app.get('/login', (req, res) => {
   if (!AUTH_REQUIRED) return res.redirect('/');
   if (readSession(parseCookies(req)[COOKIE_NAME])) return res.redirect('/');

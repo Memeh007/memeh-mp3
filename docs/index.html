@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memeh MP3</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="color-scheme" content="dark" />
+    <base href="/memeh-mp3/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #07080d;
+        --ink: #e8fff6;
+        --muted: #86a59a;
+        --cyan: #3cffd0;
+        --mag: #ff4fd8;
+        --lime: #d6ff3a;
+        --panel: rgba(7, 12, 16, 0.86);
+        --line: rgba(60, 255, 208, 0.35);
+        --danger: #ff6b7a;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "IBM Plex Mono", "Cascadia Mono", "Consolas", monospace;
+      }
+      body { position: relative; overflow-x: hidden; }
+      .lab-grid {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(rgba(60, 255, 208, 0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(60, 255, 208, 0.04) 1px, transparent 1px),
+          radial-gradient(900px 500px at 15% -10%, rgba(255, 79, 216, 0.14), transparent 55%),
+          radial-gradient(800px 480px at 100% 0%, rgba(60, 255, 208, 0.1), transparent 50%),
+          #07080d;
+        background-size: 28px 28px, 28px 28px, auto, auto, auto;
+      }
+      .crt {
+        position: fixed;
+        inset: 0;
+        z-index: 8;
+        pointer-events: none;
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.08) 0,
+          rgba(0, 0, 0, 0.08) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        mix-blend-mode: multiply;
+      }
+      .app {
+        position: relative;
+        z-index: 1;
+        width: min(720px, calc(100% - 28px));
+        margin: 0 auto;
+        padding: 72px 0 64px;
+        text-align: center;
+      }
+      .kicker {
+        margin: 0 0 12px;
+        color: var(--lime);
+        font-size: 10px;
+        letter-spacing: 0.16em;
+      }
+      h1 {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: clamp(26px, 6vw, 44px);
+        line-height: 1.35;
+        color: var(--cyan);
+        text-shadow: 4px 4px 0 var(--mag), 0 0 18px rgba(60, 255, 208, 0.45);
+      }
+      .lede {
+        margin: 18px auto 0;
+        max-width: 46ch;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.65;
+      }
+      .panel {
+        margin-top: 28px;
+        background: var(--panel);
+        border: 4px solid var(--cyan);
+        box-shadow: 8px 8px 0 var(--mag), 0 0 28px rgba(60, 255, 208, 0.12);
+        padding: 28px 24px;
+      }
+      .status {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        line-height: 1.7;
+        color: var(--cyan);
+        text-transform: uppercase;
+      }
+      .status.error { color: var(--danger); }
+      .actions { margin-top: 22px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+      .btn {
+        appearance: none;
+        border: 3px solid var(--cyan);
+        cursor: pointer;
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        line-height: 1.4;
+        padding: 12px 14px;
+        background: var(--cyan);
+        color: #04150f;
+        text-decoration: none;
+        display: inline-block;
+      }
+      .btn:hover { box-shadow: 4px 4px 0 var(--mag); transform: translate(-2px, -2px); }
+      .btn.ghost {
+        background: #04060a;
+        color: var(--cyan);
+      }
+      footer { margin-top: 22px; }
+      footer p { font-size: 10px; letter-spacing: 0.12em; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="crt" aria-hidden="true"></div>
+    <div class="lab-grid" aria-hidden="true"></div>
+    <div class="app">
+      <p class="kicker">MEMEH007 // MP3 / MP4</p>
+      <h1>MEMEH<br />MP3</h1>
+      <p class="lede">A private converter for friends. You will be sent to the live app if it is online.</p>
+      <main class="panel" aria-live="polite">
+        <p class="status" id="status">Connecting</p>
+        <div class="actions" id="actions" hidden>
+          <a class="btn" id="openBtn" href="#">Open Memeh MP3</a>
+          <button type="button" class="btn ghost" id="retryBtn">Try again</button>
+        </div>
+      </main>
+      <footer>
+        <p>PASSWORD PROTECTED  //  SEARCH HIDDEN</p>
+      </footer>
+    </div>
+    <script>
+      const statusEl = document.getElementById('status');
+      const actions = document.getElementById('actions');
+      const openBtn = document.getElementById('openBtn');
+      const retryBtn = document.getElementById('retryBtn');
+
+      function showOffline(url) {
+        statusEl.textContent = 'Memeh MP3 is offline right now';
+        statusEl.classList.add('error');
+        actions.hidden = false;
+        if (url) {
+          openBtn.href = url;
+          openBtn.hidden = false;
+        } else {
+          openBtn.hidden = true;
+        }
+      }
+
+      function timeout(ms) {
+        return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+      }
+
+      async function isUp(url) {
+        const health = url.replace(/\/$/, '') + '/api/up';
+        try {
+          const res = await Promise.race([
+            fetch(health, { cache: 'no-store', mode: 'cors' }),
+            timeout(5000),
+          ]);
+          if (res && res.ok) return true;
+        } catch (_) {
+          // try a basic reachability check that does not need CORS
+        }
+        try {
+          await Promise.race([
+            fetch(url, { cache: 'no-store', mode: 'no-cors' }),
+            timeout(5000),
+          ]);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      async function go() {
+        statusEl.textContent = 'Connecting';
+        statusEl.classList.remove('error');
+        actions.hidden = true;
+        let url = '';
+        try {
+          const res = await fetch('link.json?t=' + Date.now(), { cache: 'no-store' });
+          if (!res.ok) throw new Error('missing link');
+          const data = await res.json();
+          url = String((data && data.url) || '').trim();
+        } catch (_) {
+          showOffline('');
+          return;
+        }
+        if (!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/?$/i.test(url)) {
+          showOffline('');
+          return;
+        }
+        url = url.replace(/\/$/, '');
+        openBtn.href = url;
+        const up = await isUp(url);
+        if (up) {
+          statusEl.textContent = 'Opening';
+          location.replace(url);
+          return;
+        }
+        showOffline(url);
+      }
+
+      retryBtn.addEventListener('click', go);
+      go();
+    </script>
+  </body>
+</html>

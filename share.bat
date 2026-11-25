@@ -70,12 +70,19 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo Updating the GitHub Pages link...
+node publish-link.js
+if errorlevel 1 (
+  echo The tunnel is up, but the GitHub page was not updated. Friends can still use the URL below for now.
+) else (
+  echo Friends can use: https://memeh007.github.io/memeh-mp3/
+)
 echo.
-echo Public URL:
+echo Public tunnel URL:
 type SHARE_URL.txt
 echo.
 echo Password file: SHARE_PASSWORD.txt
 echo Leave the minimized server and tunnel windows open while friends use the link.
-echo The URL will be different the next time you run this file.
+echo The tunnel URL changes each time you restart, but the GitHub link stays the same.
 echo.
 pause
